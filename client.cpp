@@ -200,7 +200,7 @@ void *keep_alive_thread(void *args) {
  * Data transmission is done directly from peer to peer (hence the name P2P). 
  * 
  * @usage: 
- *   simple_p2p_client [-t tun_name] [-n NAT_type] serverIP:serverPort
+ *   sp_client [-t tun_name] [-n NAT_type] serverIP:serverPort
  * 
  *   NAT_type
  *     0 = Restricted NAT
@@ -208,7 +208,7 @@ void *keep_alive_thread(void *args) {
  *     2 = Symmetric NAT
  * 
  *   Example: 
- *     simple_p2p_client -n2 1.2.3.4:2333
+ *     sp_client -n2 1.2.3.4:2333
  * 
  *   NOTE: 
  *     1. Domain name resolution is not supported here for the simplicity of

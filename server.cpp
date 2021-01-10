@@ -15,7 +15,7 @@ using namespace std;
  * Simple P2P server
  * 
  * @usage:
- *   simple_p2p_server [port]
+ *   sp_server [port]
  */
 int main(int argc, char *argv[])
 {
