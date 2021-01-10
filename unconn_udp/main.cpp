@@ -44,7 +44,7 @@ void *recv_thread(void *args) {
         if (!(addr_str2 = known_list.get_name(addr_str)))
             addr_str2 = addr_str;
         // 4. Output
-        cout << "(From " << addr_str2 <<") " << recv_buffer << endl;        
+        cout << "\e[33m(From " << addr_str2 <<") " << recv_buffer << "\e[0m" << endl;        
     }
 }
 

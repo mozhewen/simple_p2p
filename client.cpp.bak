@@ -38,18 +38,18 @@ int tun_create(char *dev_name) {
         return fd; // as error number
     // 2. Config TUN device using configuration in "ifr"
     memset(&ifr, 0, sizeof(ifr));
-    // IFF_TUN: TUN device for IP datagram (Alt: TAP for Ethernet datagram). 
-    // IFF_NO_PI: No packet Information. Simply a raw datagram, no extra header. 
+    //   IFF_TUN: TUN device for IP datagram (Alt: TAP for Ethernet datagram). 
+    //   IFF_NO_PI: No packet Information. Simply a raw datagram, no extra header. 
     ifr.ifr_flags |= IFF_TUN | IFF_NO_PI;
-    // If dev_name is not empty, use this name
+    //   If dev_name is not empty, use this name
     if (strncmp(dev_name, "", IFNAMSIZ) != 0)
         strncpy(ifr.ifr_name, dev_name, IFNAMSIZ);
-    // Configure TUN device
+    //   Configure TUN device
     if((err = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0){
         close(fd);
         return err;
     }
-    // Copy the final divice name back
+    //   Copy the final divice name back
     strncpy(dev_name, ifr.ifr_name, IFNAMSIZ);
 
     return fd;
@@ -74,60 +74,39 @@ sockaddr_in peer_addr;
 
 /**
  * Send a packet to peer to make local NAT record peer's information (Let the
- * local NAT allow peer's package back). I call this process "open the door". 
- * There are 4 cases for both ends' NAT types: 
+ * local NAT allow peer's package back). I call this process "Open the door". 
+ * There are 4 cases for both ends NAT types: 
  *   1. symmetric - symmetric           Peer connection is unlikely
  *   2. symmetric - port restricted     Port scan is needed
  *   3. symmetric - restricted          
  *   4. no symmetric                    Simply send an open-the-door packet in each end
  * NOTE: If one end is symmetric, the other end will receive a "You made it"
- * packet. In other cases, no such message is sent or received. 
+ * packet. In other cases, no message is received. 
  */
 int open_the_door(int sockfd, NAT_type local_NAT, NAT_type peer_NAT) {
     if (local_NAT == NAT_symmetric && peer_NAT == NAT_symmetric) {
         cerr << "NAT types of both ends are symmetric. Give up" << endl;
         return -1;
     }
-    // 1.1. Send "Open the door" message
     packet_short pack = {msg_open, "Open the door"};
-    if (local_NAT == NAT_port_restricted && peer_NAT == NAT_symmetric) {
-        cout << "Local NAT type is port restricted, peer NAT type is symmetric\n"
-             << "Wait " << wait_sec << " second(s) for peer opening the door... " << endl;
-        sleep(wait_sec);
-        cout << "Start port scan... " << endl;
-        // Port scan
-        for (int i = 1024; i < 65536; i++) {
-            peer_addr.sin_port = htons(i);
+    if (peer_NAT == NAT_symmetric) {
+        if (local_NAT == NAT_port_restricted) {
+            cout << "Peer NAT type is symmetric, local NAT type is port restricted\n"
+                 << "Wait " << wait_sec << " second(s) for peer opening the door... " << endl;
+            sleep(wait_sec);
+            cout << "Start port scan... " << endl;
+            // Port scan
+            for (int i = 1024; i < 65536; i++) {
+                peer_addr.sin_port = htons(i);
+                sendto(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, sizeof(peer_addr));
+            }
+        } else if (local_NAT == NAT_restricted) {
+            // Open the door
+            cout << "Peer NAT type is symmetric, local NAT type is restricted\n"
+                 << "Open the door to peer " << addr2str(peer_addr) << endl;
             sendto(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, sizeof(peer_addr));
         }
-    } else if (local_NAT == NAT_symmetric && peer_NAT == NAT_restricted) {
-        cout << "Local NAT type is symmetric, peer NAT type is restricted\n"
-             << "Wait " << wait_sec << " second(s) for peer opening the door... " << endl;
-        sleep(wait_sec);
-    } else {
-        cout << "Open the door to peer " << addr2str(peer_addr) << endl;
-        sendto(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, sizeof(peer_addr));
-    }
-    // 1.2. Receive port scan message
-    if (local_NAT == NAT_symmetric && peer_NAT == NAT_port_restricted) {
-        cout << "Local NAT type is symmetric, peer NAT type is port restricted\n"
-             << "Wait for peer's port scan arrival... " << endl;
-        socklen_t len = sizeof(peer_addr);
-        int ret = recvfrom(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, &len);
-        if (ret < 0) {
-            cerr << "Timed out" << endl;
-            return -2;
-        } else cout << "Peer arrived" << endl;
-    }
-    // 2.1. Send "You made it" message
-    if (local_NAT == NAT_symmetric) {
-        // Used for peer detecting local's port number
-        strncpy(pack.text, "If you see this message, you made it. ", sizeof(pack.text));
-        sendto(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, sizeof(peer_addr));
-        cout << "\"You made it\" packet sent" << endl;
-    }
-    // 2.2. Wait for peer's response to detect the actual peer port number
-    if (peer_NAT == NAT_symmetric) {
+        // Wait for peer's response to detect the actual peer port number
         // NOTE: This will change the "peer_addr"'s port to an available one. 
         // It's not safe without checking the sender of the packet. However,
         // it's unlikely for others to get access in a symmetric NAT from outside. 
@@ -140,6 +119,29 @@ int open_the_door(int sockfd, NAT_type local_NAT, NAT_type peer_NAT) {
         } else {
             cout << "Response from peer: " << pack.text << "\n"
                  << "Peer address changed to " << addr2str(peer_addr) << endl;
+        }
+    } else {
+        cout << "Open the door to peer " << addr2str(peer_addr) << endl;
+        sendto(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, sizeof(peer_addr));
+        if (local_NAT == NAT_symmetric) {
+            if (peer_NAT == NAT_port_restricted) {
+                cout << "Local NAT type is symmetric, peer NAT type is port restricted\n"
+                     << "Wait for peer's arrival... " << endl;
+                socklen_t len = sizeof(peer_addr);
+                int ret = recvfrom(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, &len);
+                if (ret < 0) {
+                    cerr << "Timed out" << endl;
+                    return -2;
+                } else cout << "Peer arrived" << endl;
+            } else if (peer_NAT == NAT_restricted) {
+                cout << "Local NAT type is symmetric, peer NAT type is restricted\n"
+                     << "Wait " << wait_sec << " second(s) for peer opening the door... " << endl;
+                sleep(wait_sec);
+            }
+            // Used for peer detecting local's port number
+            strncpy(pack.text, "If you see this message, you made it. ", sizeof(pack.text));
+            sendto(sockfd, &pack, sizeof(pack), 0, (sockaddr *)&peer_addr, sizeof(peer_addr));
+            cout << "\"You made it\" packet sent" << endl;
         }
     }
     return 0;
@@ -230,11 +232,11 @@ int main(int argc, char *argv[]) {
         while ((opt = getopt(argc, argv, "+t:n:")) >= 0) {
             switch(opt) {
             case 't':
-                // TUN name
+                //   TUN name
                 strncpy(dev_name, optarg, IFNAMSIZ);
                 break;
             case 'n':
-                // NAT type
+                //   NAT type
                 local_NAT = (NAT_type)stoi(optarg);
                 break;
             }
@@ -243,7 +245,7 @@ int main(int argc, char *argv[]) {
             cerr << "Invalid argument number" << endl;
             exit(-1);
         }
-        // serverIP:serverPort
+        //   serverIP:serverPort
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_addr.s_addr = inet_addr(strtok(argv[optind], ":"));
         server_addr.sin_port = htons(stoi(strtok(NULL, ":")));
@@ -261,7 +263,7 @@ int main(int argc, char *argv[]) {
     cout << "TUN device \"" << dev_name << "\" created\n";
 
     // 2. Create a socket for server and peer connections
-    // UDP is used for simplicity. (It's much simpler than TCP)
+    //   UDP is used for simplicity. (It's much simpler than TCP)
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("socket");
         exit(-4);

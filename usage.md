@@ -60,7 +60,7 @@
 
       ```
       # ip netns add p2p
-      # ip link set tun0 ntens p2p
+      # ip link set tun0 netns p2p
       ```
 
    * （可选）为新建的 namespace“p2p”打开本地回环（loopback, lo），不这么做不影响上网，但是会 ping 不通 localhost
@@ -97,6 +97,12 @@
    ```
 
    在这个新打开的 bash 里，就可以打开各种应用程序了，图形界面也是支持的。
+
+   要想在这个 bash 里打开 chrome 浏览器，需要告诉 chrome 新建一个 session （否则 chrome 会在当前 session 下新开页面，这用的还是系统默认的 IP 地址，不是新建的网络空间的 IP 地址），这需要加一个选项：
+
+   ```
+   $ google-chrome --user-data-dir=/tmp
+   ```
 
 6. IPv6 配置方法
 
